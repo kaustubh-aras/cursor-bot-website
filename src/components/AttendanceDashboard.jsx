@@ -25,9 +25,10 @@ export default function AttendanceDashboard() {
     async function fetchData() {
       try {
         setLoading(true);
+        const baseURL = process.env.NEXT_PUBLIC_API_BASE_URL;
         const [attRes, leaveRes] = await Promise.all([
-          axios.get("http://localhost:5000/api/attendance"),
-          axios.get("http://localhost:5000/api/leaves"),
+          axios.get(`${baseURL}/api/attendance`),
+          axios.get(`${baseURL}/api/leaves`),
         ]);
 
         setAttendance(attRes.data);
