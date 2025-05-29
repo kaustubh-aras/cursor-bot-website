@@ -51,20 +51,18 @@ export default function AttendanceDashboard() {
 
   function formatDateToDDMMYYYY(dateString) {
     const d = new Date(dateString);
+
     const day = String(d.getDate()).padStart(2, "0");
     const month = String(d.getMonth() + 1).padStart(2, "0");
     const year = d.getFullYear();
 
     let hours = d.getHours();
     const minutes = String(d.getMinutes()).padStart(2, "0");
-    const seconds = String(d.getSeconds()).padStart(2, "0");
-    const ampm = hours >= 12 ? "PM" : "AM";
 
-    hours = hours % 12;
-    hours = hours ? hours : 12; // the hour '0' should be '12'
+    // Format time in HH:mm (24-hour format)
     const strHours = String(hours).padStart(2, "0");
 
-    return `${day}-${month}-${year} ${strHours}:${minutes}:${seconds} ${ampm}`;
+    return `${day}-${month}-${year} ${strHours}:${minutes}`;
   }
 
   return (
@@ -112,10 +110,8 @@ export default function AttendanceDashboard() {
                         <TableCell>{entry.displayName}</TableCell>
                         {/* <TableCell> */}
                         <TableCell>
-                          {formatDateToDDMMYYYY(entry?.date)}
+                          {formatDateToDDMMYYYY(entry?.createdAt)}
                         </TableCell>
-                        {/* {new Date(entry.date).toLocaleString()} */}
-                        {/* </TableCell> */}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -146,7 +142,7 @@ export default function AttendanceDashboard() {
                       <TableRow key={idx} className="hover:bg-rose-50">
                         <TableCell>{entry?.displayName}</TableCell>
                         <TableCell>
-                          {formatDateToDDMMYYYY(entry?.date)}
+                          {formatDateToDDMMYYYY(entry?.createdAt)}
                         </TableCell>
                         <TableCell>{entry?.reason}</TableCell>
                       </TableRow>
