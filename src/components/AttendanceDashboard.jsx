@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { signOut } from "next-auth/react";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -56,21 +58,23 @@ export default function AttendanceDashboard() {
     const month = String(d.getMonth() + 1).padStart(2, "0");
     const year = d.getFullYear();
 
-    let hours = d.getHours();
+    const hours = String(d.getHours()).padStart(2, "0");
     const minutes = String(d.getMinutes()).padStart(2, "0");
 
-    // Format time in HH:mm (24-hour format)
-    const strHours = String(hours).padStart(2, "0");
-
-    return `${day}-${month}-${year} ${strHours}:${minutes}`;
+    return `${day}-${month}-${year} ${hours}:${minutes}`;
   }
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <h1 className="text-3xl font-semibold mb-4">
-        Employee Attendance & Leaves
-      </h1>
+      {/* Header with Title and Sign Out */}
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-semibold">Employee Attendance & Leaves</h1>
+        <Button variant="destructive" onClick={() => signOut()}>
+          Sign Out
+        </Button>
+      </div>
 
+      {/* Search Input */}
       <Input
         placeholder="Search by Name..."
         value={search}
@@ -78,14 +82,15 @@ export default function AttendanceDashboard() {
         className="max-w-md"
       />
 
+      {/* Loading/Error State */}
       {loading && (
         <p className="text-center text-gray-500 mt-6">Loading data...</p>
       )}
-
       {error && (
         <p className="text-center text-red-600 mt-6 font-medium">{error}</p>
       )}
 
+      {/* Tables */}
       {!loading && !error && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Attendance Table */}
@@ -108,7 +113,6 @@ export default function AttendanceDashboard() {
                     {filteredAttendance.map((entry, idx) => (
                       <TableRow key={idx} className="hover:bg-indigo-50">
                         <TableCell>{entry.displayName}</TableCell>
-                        {/* <TableCell> */}
                         <TableCell>
                           {formatDateToDDMMYYYY(entry?.createdAt)}
                         </TableCell>
