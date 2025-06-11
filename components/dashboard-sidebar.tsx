@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import { Calendar, Home, LogOut, Users, UserCheck, Clock } from "lucide-react"
-import { signOut, useSession } from "next-auth/react"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { Calendar, Home, LogOut, Users, UserCheck, Clock } from "lucide-react";
+import { signOut, useSession } from "next-auth/react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   Sidebar,
   SidebarContent,
@@ -15,9 +15,10 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar"
-import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+} from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const menuItems = [
   {
@@ -45,15 +46,15 @@ const menuItems = [
     url: "/dashboard/reports",
     icon: Clock,
   },
-]
+];
 
 export function DashboardSidebar() {
-  const pathname = usePathname()
-  const { data: session } = useSession()
+  const pathname = usePathname();
+  const { data: session } = useSession();
 
   const handleSignOut = () => {
-    signOut({ callbackUrl: "/" })
-  }
+    signOut({ callbackUrl: "/" });
+  };
 
   return (
     <Sidebar>
@@ -90,21 +91,36 @@ export function DashboardSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-medium">Theme</span>
+          <ThemeToggle />
+        </div>
         <div className="flex items-center gap-3 mb-3">
           <Avatar className="h-8 w-8">
             <AvatarImage src={session?.user?.image || ""} />
-            <AvatarFallback>{session?.user?.name?.charAt(0) || "U"}</AvatarFallback>
+            <AvatarFallback>
+              {session?.user?.name?.charAt(0) || "U"}
+            </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{session?.user?.name}</p>
-            <p className="text-xs text-muted-foreground truncate">{session?.user?.email}</p>
+            <p className="text-sm font-medium truncate">
+              {session?.user?.name}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">
+              {session?.user?.email}
+            </p>
           </div>
         </div>
-        <Button onClick={handleSignOut} variant="outline" size="sm" className="w-full">
+        <Button
+          onClick={handleSignOut}
+          variant="outline"
+          size="sm"
+          className="w-full"
+        >
           <LogOut className="h-4 w-4 mr-2" />
           Sign Out
         </Button>
       </SidebarFooter>
     </Sidebar>
-  )
+  );
 }
