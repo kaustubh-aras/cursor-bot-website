@@ -386,17 +386,6 @@ export default function AttendancePage() {
   const handleUpdateAttendance = async () => {
     if (!selectedRecord) return;
 
-    // Check if both halves are being marked as absent
-    if (!formData.firstHalfPresent && !formData.secondHalfPresent) {
-      toast({
-        title: "Validation Error",
-        description:
-          "Cannot mark both halves as absent. Please delete the record instead or mark at least one half as present.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setSaving(true);
     try {
       const requestBody = {
@@ -692,23 +681,24 @@ export default function AttendancePage() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
-          {/* <Button
-            disabled
+          <Button
             onClick={() => setCreateDialogOpen(true)}
             className="w-full sm:w-auto"
           >
             <Plus className="mr-2 h-4 w-4" />
-            Add Record (Coming Soon)
-          </Button> */}
-          {/* <Button
-          disabled
+            Add Record
+          </Button>
+
+          <Button
+            disabled
             onClick={() => setBulkDialogOpen(true)}
             variant="outline"
             className="w-full sm:w-auto"
           >
             <Upload className="mr-2 h-4 w-4" />
             Bulk Add
-          </Button> */}
+          </Button>
+
           <Button
             onClick={exportToCSV}
             variant="outline"
@@ -984,10 +974,6 @@ export default function AttendancePage() {
                 />
                 <Label htmlFor="second-half">Second Half Present</Label>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Note: At least one half must be marked as present to create an
-                attendance record.
-              </p>
             </div>
             <div>
               <Label htmlFor="note-input">Note (Optional)</Label>
@@ -1055,10 +1041,6 @@ export default function AttendancePage() {
                 />
                 <Label htmlFor="edit-second-half">Second Half Present</Label>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Note: At least one half must be marked as present. To mark
-                completely absent, delete the record instead.
-              </p>
             </div>
             <div>
               <Label htmlFor="edit-note-input">Note (Optional)</Label>
