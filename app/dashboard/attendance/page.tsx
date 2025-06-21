@@ -176,7 +176,7 @@ export default function AttendancePage() {
   // Fetch users
   const fetchUsers = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/users`);
+      const response = await fetch(`${API_BASE}/api/hr/users`);
       if (!response.ok) {
         throw new Error(`Failed to fetch users: ${response.status}`);
       }
