@@ -121,7 +121,7 @@ export default function AttendancePage() {
   const [bulkFirstHalf, setBulkFirstHalf] = useState(true);
   const [bulkSecondHalf, setBulkSecondHalf] = useState(true);
 
-  const API_BASE = "http://localhost:5000/api/hr";
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL
 
   // Fetch attendance data with proper API filtering
   const fetchAttendanceData = useCallback(async () => {
@@ -141,7 +141,7 @@ export default function AttendancePage() {
 
       console.log("Fetching attendance with params:", params.toString()); // Debug log
 
-      const response = await fetch(`${API_BASE}/attendance?${params}`);
+      const response = await fetch(`${API_BASE}/api/hr/attendance?${params}`);
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Fetch attendance error:", response.status, errorText);
@@ -330,7 +330,7 @@ export default function AttendancePage() {
       console.log("Creating attendance with data:", requestBody);
       console.log("Selected user:", selectedUser);
 
-      const response = await fetch(`${API_BASE}/attendance`, {
+      const response = await fetch(`${API_BASE}/api/hr/attendance`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -397,7 +397,7 @@ export default function AttendancePage() {
       console.log("Updating attendance with data:", requestBody);
 
       const response = await fetch(
-        `${API_BASE}/attendance/${selectedRecord._id}`,
+        `${API_BASE}/api/hr/attendance/${selectedRecord._id}`,
         {
           method: "PUT",
           headers: {
@@ -460,7 +460,7 @@ export default function AttendancePage() {
     setDeleting(true);
     try {
       const response = await fetch(
-        `${API_BASE}/attendance/${selectedRecord._id}`,
+        `${API_BASE}/api/hr/attendance/${selectedRecord._id}`,
         {
           method: "DELETE",
         }
@@ -513,7 +513,7 @@ export default function AttendancePage() {
         };
       });
 
-      const response = await fetch(`${API_BASE}/attendance/bulk`, {
+      const response = await fetch(`${API_BASE}/api/hr/attendance/bulk`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
