@@ -1,14 +1,20 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Label } from "@/components/ui/label"
+import { useEffect, useState, useCallback } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -16,54 +22,87 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { CalendarIcon, Search, Filter, Download, Trash2, Plus, Edit, Users, Upload } from "lucide-react"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { format } from "date-fns"
-import { cn } from "@/lib/utils"
-import { toast } from "@/hooks/use-toast"
+} from "@/components/ui/dialog";
+import {
+  CalendarIcon,
+  Search,
+  Filter,
+  Download,
+  Trash2,
+  Plus,
+  Edit,
+  Upload,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
+import { toast } from "@/hooks/use-toast";
 
 interface AttendanceRecord {
-  _id: string
-  userId: string
-  username: string
-  displayName: string
-  date: string
-  firstHalfPresent: boolean
-  secondHalfPresent: boolean
-  createdAt: string
-  updatedAt?: string
-  formattedDate?: string
-  id?: string
+  _id: string;
+  userId: string;
+  username: string;
+  displayName: string;
+  date: string;
+  firstHalfPresent: boolean;
+  secondHalfPresent: boolean;
+  note?: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 interface User {
-  _id: string
-  username: string
-  displayName: string
-  email?: string
+  _id: string;
+  username: string;
+  displayName: string;
+  email?: string;
+}
+
+interface ApiResponse {
+  success: boolean;
+  data: AttendanceRecord[];
+  pagination?: {
+    currentPage: number;
+    totalPages: number;
+    totalRecords: number;
+    limit: number;
+  };
 }
 
 export default function AttendancePage() {
-  const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>([])
-  const [filteredData, setFilteredData] = useState<AttendanceRecord[]>([])
-  const [users, setUsers] = useState<User[]>([])
-  const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [date, setDate] = useState<Date | undefined>(new Date())
-  const [statusFilter, setStatusFilter] = useState("all")
-  
+  const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [date, setDate] = useState<Date | undefined>(new Date());
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [selectedUserId, setSelectedUserId] = useState<string>(""); // Updated default value
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [limit] = useState(50);
+
   // Dialog states
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [createDialogOpen, setCreateDialogOpen] = useState(false)
-  const [editDialogOpen, setEditDialogOpen] = useState(false)
-  const [bulkDialogOpen, setBulkDialogOpen] = useState(false)
-  
-  const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null)
-  const [password, setPassword] = useState("")
-  const [deleting, setDeleting] = useState(false)
-  const [saving, setSaving] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+
+  const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(
+    null
+  );
+  const [password, setPassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -73,124 +112,151 @@ export default function AttendancePage() {
     date: format(new Date(), "yyyy-MM-dd"),
     firstHalfPresent: false,
     secondHalfPresent: false,
-  })
+    note: "",
+  });
 
   // Bulk operation states
-  const [bulkDate, setBulkDate] = useState<Date | undefined>(new Date())
-  const [bulkUsers, setBulkUsers] = useState<string[]>([])
-  const [bulkFirstHalf, setBulkFirstHalf] = useState(true)
-  const [bulkSecondHalf, setBulkSecondHalf] = useState(true)
+  const [bulkDate, setBulkDate] = useState<Date | undefined>(new Date());
+  const [bulkUsers, setBulkUsers] = useState<string[]>([]);
+  const [bulkFirstHalf, setBulkFirstHalf] = useState(true);
+  const [bulkSecondHalf, setBulkSecondHalf] = useState(true);
 
-  const API_BASE = "http://localhost:5000/api/hr"
+  const API_BASE = "http://localhost:5000/api/hr";
+
+  // Fetch attendance data with proper API filtering
+  const fetchAttendanceData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: limit.toString(),
+      });
+
+      if (date) {
+        params.append("date", format(date, "yyyy-MM-dd"));
+      }
+      if (selectedUserId && selectedUserId !== "all") {
+        params.append("userId", selectedUserId);
+      }
+
+      console.log("Fetching attendance with params:", params.toString()); // Debug log
+
+      const response = await fetch(`${API_BASE}/attendance?${params}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Fetch attendance error:", response.status, errorText);
+        throw new Error(`Failed to fetch attendance: ${response.status}`);
+      }
+
+      const result: ApiResponse = await response.json();
+      console.log("Attendance API response:", result); // Debug log
+
+      if (result.success) {
+        setAttendanceData(result.data || []);
+        if (result.pagination) {
+          setTotalPages(result.pagination.totalPages);
+          setTotalRecords(result.pagination.totalRecords);
+        }
+      } else {
+        setAttendanceData([]);
+      }
+    } catch (error) {
+      console.error("Error fetching attendance data:", error);
+      setAttendanceData([]);
+      toast({
+        title: "Error",
+        description: "Failed to fetch attendance data. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [currentPage, limit, date, selectedUserId]);
+
+  // Fetch users
+  const fetchUsers = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/users`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch users: ${response.status}`);
+      }
+      const usersResult = await response.json();
+      console.log("Users API response:", usersResult); // Debug log
+
+      // Handle different possible response structures
+      if (Array.isArray(usersResult)) {
+        setUsers(usersResult);
+      } else if (usersResult.data && Array.isArray(usersResult.data)) {
+        setUsers(usersResult.data);
+      } else if (usersResult.success && Array.isArray(usersResult.users)) {
+        setUsers(usersResult.users);
+      } else {
+        console.error("Unexpected users API response structure:", usersResult);
+        setUsers([]);
+      }
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      setUsers([]);
+      toast({
+        title: "Error",
+        description: "Failed to fetch users. Please try again.",
+        variant: "destructive",
+      });
+    }
+  }, []);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Fetch attendance data
-        const attendanceResponse = await fetch(`${API_BASE}/attendance`)
-        
-        if (!attendanceResponse.ok) {
-          throw new Error(`Failed to fetch attendance: ${attendanceResponse.status}`)
-        }
-        
-        const attendanceResult = await attendanceResponse.json()
-        const attendanceArray = Array.isArray(attendanceResult) ? attendanceResult : []
-        setAttendanceData(attendanceArray)
-        setFilteredData(attendanceArray)
-
-        // Fetch users
-        const usersResponse = await fetch(`${API_BASE}/users`)
-        
-        if (!usersResponse.ok) {
-          throw new Error(`Failed to fetch users: ${usersResponse.status}`)
-        }
-        
-        const usersResult = await usersResponse.json()
-        const usersArray = Array.isArray(usersResult) ? usersResult : []
-        setUsers(usersArray)
-      } catch (error) {
-        console.error("Error fetching data:", error)
-        // Set empty arrays as fallback
-        setAttendanceData([])
-        setFilteredData([])
-        setUsers([])
-        
-        toast({
-          title: "Error",
-          description: "Failed to fetch data. Please try again.",
-          variant: "destructive",
-        })
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-  }, [])
+    fetchUsers();
+  }, [fetchUsers]);
 
   useEffect(() => {
-    // Ensure attendanceData is an array before spreading
-    if (!Array.isArray(attendanceData)) {
-      return
-    }
-    
-    let filtered = [...attendanceData]
+    fetchAttendanceData();
+  }, [fetchAttendanceData]);
 
-    // Filter by search term
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (record) =>
-          record.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          record.username.toLowerCase().includes(searchTerm.toLowerCase()),
-      )
-    }
+  // Client-side filtering for search and status (since API doesn't support these yet)
+  const filteredData = attendanceData.filter((record) => {
+    const matchesSearch =
+      searchTerm === "" ||
+      record.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      record.username.toLowerCase().includes(searchTerm.toLowerCase());
 
-    // Filter by date
-    if (date) {
-      const dateString = format(date, "yyyy-MM-dd")
-      filtered = filtered.filter((record) => record.date === dateString)
-    }
+    const matchesStatus =
+      statusFilter === "all" ||
+      (statusFilter === "full" &&
+        record.firstHalfPresent &&
+        record.secondHalfPresent) ||
+      (statusFilter === "half" &&
+        ((record.firstHalfPresent && !record.secondHalfPresent) ||
+          (!record.firstHalfPresent && record.secondHalfPresent))) ||
+      (statusFilter === "first-half" && record.firstHalfPresent) ||
+      (statusFilter === "second-half" && record.secondHalfPresent) ||
+      (statusFilter === "absent" &&
+        !record.firstHalfPresent &&
+        !record.secondHalfPresent);
 
-    // Filter by status
-    if (statusFilter !== "all") {
-      if (statusFilter === "full") {
-        filtered = filtered.filter((record) => record.firstHalfPresent && record.secondHalfPresent)
-      } else if (statusFilter === "half") {
-        filtered = filtered.filter(
-          (record) =>
-            (record.firstHalfPresent && !record.secondHalfPresent) ||
-            (!record.firstHalfPresent && record.secondHalfPresent),
-        )
-      } else if (statusFilter === "first-half") {
-        filtered = filtered.filter((record) => record.firstHalfPresent)
-      } else if (statusFilter === "second-half") {
-        filtered = filtered.filter((record) => record.secondHalfPresent)
-      }
-    }
-
-    setFilteredData(filtered)
-  }, [searchTerm, date, statusFilter, attendanceData])
+    return matchesSearch && matchesStatus;
+  });
 
   const getAttendanceStatus = (record: AttendanceRecord) => {
     if (record.firstHalfPresent && record.secondHalfPresent) {
-      return { label: "Full Day", variant: "default" as const }
+      return { label: "Full Day", variant: "default" as const };
     } else if (record.firstHalfPresent) {
-      return { label: "First Half", variant: "secondary" as const }
+      return { label: "First Half", variant: "secondary" as const };
     } else if (record.secondHalfPresent) {
-      return { label: "Second Half", variant: "secondary" as const }
+      return { label: "Second Half", variant: "secondary" as const };
     } else {
-      return { label: "Absent", variant: "destructive" as const }
+      return { label: "Absent", variant: "destructive" as const };
     }
-  }
+  };
 
   const formatTime = (dateString: string) => {
-    const date = new Date(dateString)
+    const date = new Date(dateString);
     return date.toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
-    })
-  }
+    });
+  };
 
   const resetForm = () => {
     setFormData({
@@ -200,20 +266,21 @@ export default function AttendancePage() {
       date: format(new Date(), "yyyy-MM-dd"),
       firstHalfPresent: false,
       secondHalfPresent: false,
-    })
-  }
+      note: "",
+    });
+  };
 
   const handleUserSelect = (userId: string) => {
-    const user = users.find(u => u._id === userId)
+    const user = users.find((u) => u._id === userId);
     if (user) {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
         userId: user._id,
         username: user.username,
         displayName: user.displayName,
-      }))
+      }));
     }
-  }
+  };
 
   const handleCreateAttendance = async () => {
     if (!formData.userId || !formData.date) {
@@ -221,55 +288,89 @@ export default function AttendancePage() {
         title: "Validation Error",
         description: "Please select a user and date.",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
-    setSaving(true)
+    // Check if both halves are being marked as absent
+    if (!formData.firstHalfPresent && !formData.secondHalfPresent) {
+      toast({
+        title: "Validation Error",
+        description:
+          "Cannot create attendance record with both halves absent. Please mark at least one half as present.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSaving(true);
     try {
+      // Find the selected user to get complete user data
+      const selectedUser = users.find((u) => u._id === formData.userId);
+      if (!selectedUser) {
+        toast({
+          title: "Error",
+          description: "Selected user not found. Please refresh and try again.",
+          variant: "destructive",
+        });
+        setSaving(false);
+        return;
+      }
+
+      const requestBody = {
+        _id: formData.userId,
+        username: selectedUser.username,
+        displayName: selectedUser.displayName,
+        date: formData.date,
+        firstHalfPresent: formData.firstHalfPresent,
+        secondHalfPresent: formData.secondHalfPresent,
+        note: formData.note || "",
+      };
+
+      console.log("Creating attendance with data:", requestBody);
+      console.log("Selected user:", selectedUser);
+
       const response = await fetch(`${API_BASE}/attendance`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          userId: formData.userId,
-          username: formData.username,
-          displayName: formData.displayName,
-          date: formData.date,
-          firstHalfPresent: formData.firstHalfPresent,
-          secondHalfPresent: formData.secondHalfPresent,
-        }),
-      })
+        body: JSON.stringify(requestBody),
+      });
 
       if (!response.ok) {
-        throw new Error(`Failed to create attendance: ${response.status}`)
+        const errorText = await response.text();
+        console.error("Create attendance error:", response.status, errorText);
+        throw new Error(
+          `Failed to create attendance: ${response.status} - ${errorText}`
+        );
       }
 
-      const newRecord = await response.json()
-      setAttendanceData(prev => [newRecord, ...prev])
-      
       toast({
         title: "Success",
         description: "Attendance record created successfully.",
-      })
+      });
 
-      setCreateDialogOpen(false)
-      resetForm()
+      setCreateDialogOpen(false);
+      resetForm();
+      fetchAttendanceData();
     } catch (error) {
-      console.error("Error creating attendance:", error)
+      console.error("Error creating attendance:", error);
       toast({
         title: "Error",
-        description: "Failed to create attendance record.",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Failed to create attendance record.",
         variant: "destructive",
-      })
+      });
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   const handleEditClick = (record: AttendanceRecord) => {
-    setSelectedRecord(record)
+    setSelectedRecord(record);
     setFormData({
       userId: record.userId,
       username: record.username,
@@ -277,64 +378,83 @@ export default function AttendancePage() {
       date: record.date,
       firstHalfPresent: record.firstHalfPresent,
       secondHalfPresent: record.secondHalfPresent,
-    })
-    setEditDialogOpen(true)
-  }
+      note: record.note || "",
+    });
+    setEditDialogOpen(true);
+  };
 
   const handleUpdateAttendance = async () => {
-    if (!selectedRecord) return
+    if (!selectedRecord) return;
 
-    setSaving(true)
+    // Check if both halves are being marked as absent
+    if (!formData.firstHalfPresent && !formData.secondHalfPresent) {
+      toast({
+        title: "Validation Error",
+        description:
+          "Cannot mark both halves as absent. Please delete the record instead or mark at least one half as present.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSaving(true);
     try {
-      const recordId = selectedRecord._id || selectedRecord.id
-      const response = await fetch(`${API_BASE}/attendance/${recordId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          firstHalfPresent: formData.firstHalfPresent,
-          secondHalfPresent: formData.secondHalfPresent,
-          date: formData.date,
-        }),
-      })
+      const requestBody = {
+        firstHalfPresent: formData.firstHalfPresent,
+        secondHalfPresent: formData.secondHalfPresent,
+        note: formData.note || "",
+      };
+
+      console.log("Updating attendance with data:", requestBody);
+
+      const response = await fetch(
+        `${API_BASE}/attendance/${selectedRecord._id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+        }
+      );
 
       if (!response.ok) {
-        throw new Error(`Failed to update attendance: ${response.status}`)
+        const errorText = await response.text();
+        console.error("Update attendance error:", response.status, errorText);
+        throw new Error(
+          `Failed to update attendance: ${response.status} - ${errorText}`
+        );
       }
-
-      const updatedRecord = await response.json()
-      setAttendanceData(prev => 
-        prev.map(record => 
-          (record._id || record.id) === recordId ? updatedRecord : record
-        )
-      )
 
       toast({
         title: "Success",
         description: "Attendance record updated successfully.",
-      })
+      });
 
-      setEditDialogOpen(false)
-      setSelectedRecord(null)
-      resetForm()
+      setEditDialogOpen(false);
+      setSelectedRecord(null);
+      resetForm();
+      fetchAttendanceData();
     } catch (error) {
-      console.error("Error updating attendance:", error)
+      console.error("Error updating attendance:", error);
       toast({
         title: "Error",
-        description: "Failed to update attendance record.",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Failed to update attendance record.",
         variant: "destructive",
-      })
+      });
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   const handleDeleteClick = (record: AttendanceRecord) => {
-    setSelectedRecord(record)
-    setDeleteDialogOpen(true)
-    setPassword("")
-  }
+    setSelectedRecord(record);
+    setDeleteDialogOpen(true);
+    setPassword("");
+  };
 
   const handleDeleteConfirm = async () => {
     if (password !== "admin786") {
@@ -342,58 +462,45 @@ export default function AttendancePage() {
         title: "Invalid Password",
         description: "Please enter the correct admin password.",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
-    if (!selectedRecord) return
+    if (!selectedRecord) return;
 
-    const recordId = selectedRecord._id || selectedRecord.id
-    if (!recordId) {
-      toast({
-        title: "Error",
-        description: "Could not find record ID. Please try again.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setDeleting(true)
+    setDeleting(true);
     try {
-      const response = await fetch(`${API_BASE}/attendance/${recordId}`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      })
+      const response = await fetch(
+        `${API_BASE}/attendance/${selectedRecord._id}`,
+        {
+          method: "DELETE",
+        }
+      );
 
       if (!response.ok) {
-        throw new Error(`Failed to delete record: ${response.status} ${response.statusText}`)
+        throw new Error(`Failed to delete record: ${response.status}`);
       }
-
-      setAttendanceData(prev => 
-        prev.filter(record => (record._id || record.id) !== recordId)
-      )
 
       toast({
         title: "Record Deleted",
         description: `Attendance record for ${selectedRecord.displayName} has been successfully deleted.`,
-      })
+      });
 
-      setDeleteDialogOpen(false)
-      setSelectedRecord(null)
-      setPassword("")
+      setDeleteDialogOpen(false);
+      setSelectedRecord(null);
+      setPassword("");
+      fetchAttendanceData(); // Refresh data
     } catch (error) {
-      console.error("Error deleting record:", error)
+      console.error("Error deleting record:", error);
       toast({
         title: "Delete Failed",
-        description: error instanceof Error ? error.message : "Failed to delete the attendance record.",
+        description: "Failed to delete the attendance record.",
         variant: "destructive",
-      })
+      });
     } finally {
-      setDeleting(false)
+      setDeleting(false);
     }
-  }
+  };
 
   const handleBulkAttendance = async () => {
     if (!bulkDate || bulkUsers.length === 0) {
@@ -401,86 +508,112 @@ export default function AttendancePage() {
         title: "Validation Error",
         description: "Please select a date and at least one user.",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
-    setSaving(true)
+    setSaving(true);
     try {
-      const bulkData = bulkUsers.map(userId => {
-        const user = users.find(u => u._id === userId)
+      const bulkData = bulkUsers.map((userId) => {
+        const user = users.find((u) => u._id === userId);
         return {
           userId,
-          username: user?.username || "",
-          displayName: user?.displayName || "",
           date: format(bulkDate, "yyyy-MM-dd"),
           firstHalfPresent: bulkFirstHalf,
           secondHalfPresent: bulkSecondHalf,
-        }
-      })
+        };
+      });
 
       const response = await fetch(`${API_BASE}/attendance/bulk`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ records: bulkData }),
-      })
+        body: JSON.stringify({
+          operation: "mark",
+          data: bulkData,
+        }),
+      });
 
       if (!response.ok) {
-        throw new Error(`Failed to create bulk attendance: ${response.status}`)
+        throw new Error(`Failed to create bulk attendance: ${response.status}`);
       }
-
-      const newRecords = await response.json()
-      setAttendanceData(prev => [...newRecords, ...prev])
 
       toast({
         title: "Success",
         description: `Created ${bulkUsers.length} attendance records successfully.`,
-      })
+      });
 
-      setBulkDialogOpen(false)
-      setBulkUsers([])
+      setBulkDialogOpen(false);
+      setBulkUsers([]);
+      fetchAttendanceData(); // Refresh data
     } catch (error) {
-      console.error("Error creating bulk attendance:", error)
+      console.error("Error creating bulk attendance:", error);
       toast({
         title: "Error",
         description: "Failed to create bulk attendance records.",
         variant: "destructive",
-      })
+      });
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   const exportToCSV = () => {
-    const headers = ["Name", "Username", "Date", "Time", "Status", "First Half", "Second Half"]
+    const headers = [
+      "Name",
+      "Username",
+      "Date",
+      "Time",
+      "Status",
+      "First Half",
+      "Second Half",
+      "Note",
+    ];
     const csvContent = [
       headers.join(","),
       ...filteredData.map((record) => {
-        const status = getAttendanceStatus(record)
+        const status = getAttendanceStatus(record);
         return [
-          record.displayName,
-          record.username,
+          `"${record.displayName}"`,
+          `"${record.username}"`,
           new Date(record.date).toLocaleDateString(),
           formatTime(record.createdAt),
-          status.label,
+          `"${status.label}"`,
           record.firstHalfPresent ? "Present" : "Absent",
           record.secondHalfPresent ? "Present" : "Absent",
-        ].join(",")
+          `"${record.note || ""}"`,
+        ].join(",");
       }),
-    ].join("\n")
+    ].join("\n");
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.setAttribute("href", url)
-    link.setAttribute("download", `attendance_${format(date || new Date(), "yyyy-MM-dd")}.csv`)
-    link.style.visibility = "hidden"
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  }
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `attendance_${format(date || new Date(), "yyyy-MM-dd")}.csv`
+    );
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+  };
+
+  const handleDateFilter = (newDate: Date | undefined) => {
+    setDate(newDate);
+    setCurrentPage(1); // Reset to first page when filtering
+  };
+
+  const handleUserFilter = (userId: string) => {
+    setSelectedUserId(userId);
+    setCurrentPage(1); // Reset to first page when filtering
+  };
 
   if (loading) {
     return (
@@ -494,14 +627,18 @@ export default function AttendancePage() {
           <div className="h-64 bg-gray-200 rounded"></div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Attendance Management</h1>
-        <p className="text-muted-foreground">Manage daily attendance records with full CRUD operations</p>
+        <h1 className="text-3xl font-bold tracking-tight">
+          Attendance Management
+        </h1>
+        <p className="text-muted-foreground">
+          Manage daily attendance records with full CRUD operations
+        </p>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
@@ -518,13 +655,21 @@ export default function AttendancePage() {
 
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" className="w-full sm:w-auto justify-start text-left font-normal">
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto justify-start text-left font-normal"
+              >
                 <CalendarIcon className="mr-2 h-4 w-4" />
                 {date ? format(date, "PPP") : <span>Pick a date</span>}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0">
-              <Calendar mode="single" selected={date} onSelect={setDate} initialFocus />
+              <Calendar
+                mode="single"
+                selected={date}
+                onSelect={handleDateFilter}
+                initialFocus
+              />
             </PopoverContent>
           </Popover>
 
@@ -541,20 +686,34 @@ export default function AttendancePage() {
               <SelectItem value="half">Half Day</SelectItem>
               <SelectItem value="first-half">First Half</SelectItem>
               <SelectItem value="second-half">Second Half</SelectItem>
+              <SelectItem value="absent">Absent</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
-          <Button onClick={() => setCreateDialogOpen(true)} className="w-full sm:w-auto">
+          {/* <Button
+            disabled
+            onClick={() => setCreateDialogOpen(true)}
+            className="w-full sm:w-auto"
+          >
             <Plus className="mr-2 h-4 w-4" />
-            Add Record
-          </Button>
-          <Button onClick={() => setBulkDialogOpen(true)} variant="outline" className="w-full sm:w-auto">
+            Add Record (Coming Soon)
+          </Button> */}
+          {/* <Button
+          disabled
+            onClick={() => setBulkDialogOpen(true)}
+            variant="outline"
+            className="w-full sm:w-auto"
+          >
             <Upload className="mr-2 h-4 w-4" />
             Bulk Add
-          </Button>
-          <Button onClick={exportToCSV} variant="outline" className="w-full sm:w-auto">
+          </Button> */}
+          <Button
+            onClick={exportToCSV}
+            variant="outline"
+            className="w-full sm:w-auto"
+          >
             <Download className="mr-2 h-4 w-4" />
             Export CSV
           </Button>
@@ -563,7 +722,10 @@ export default function AttendancePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Attendance Records ({filteredData.length})</CardTitle>
+          <CardTitle>
+            Attendance Records ({totalRecords} total, showing{" "}
+            {filteredData.length})
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="rounded-md border">
@@ -576,50 +738,74 @@ export default function AttendancePage() {
                     <th className="py-3 px-4 text-left">Status</th>
                     <th className="py-3 px-4 text-left">First Half</th>
                     <th className="py-3 px-4 text-left">Second Half</th>
+                    <th className="py-3 px-4 text-left">Note</th>
                     <th className="py-3 px-4 text-left">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredData.length > 0 ? (
                     filteredData.map((record) => {
-                      const status = getAttendanceStatus(record)
-                      const recordId = record._id || record.id
+                      const status = getAttendanceStatus(record);
                       return (
-                        <tr key={recordId} className="border-b hover:bg-muted/50">
+                        <tr
+                          key={record._id}
+                          className="border-b hover:bg-muted/50"
+                        >
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-3">
                               <Avatar className="h-8 w-8">
-                                <AvatarImage src={`https://avatar.vercel.sh/${record.username}`} />
-                                <AvatarFallback>{record.displayName.charAt(0)}</AvatarFallback>
+                                <AvatarImage
+                                  src={`https://avatar.vercel.sh/${record.username}`}
+                                />
+                                <AvatarFallback>
+                                  {record.displayName.charAt(0)}
+                                </AvatarFallback>
                               </Avatar>
                               <div>
-                                <p className="font-medium">{record.displayName}</p>
-                                <p className="text-xs text-muted-foreground">@{record.username}</p>
+                                <p className="font-medium">
+                                  {record.displayName}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  @{record.username}
+                                </p>
                               </div>
                             </div>
                           </td>
                           <td className="py-3 px-4">
                             <div>
                               <p className="font-medium">
-                                {new Date(record.date).toLocaleDateString("en-US", {
-                                  weekday: "short",
-                                  year: "numeric",
-                                  month: "short",
-                                  day: "numeric",
-                                })}
+                                {new Date(record.date).toLocaleDateString(
+                                  "en-US",
+                                  {
+                                    weekday: "short",
+                                    year: "numeric",
+                                    month: "short",
+                                    day: "numeric",
+                                  }
+                                )}
                               </p>
-                              <p className="text-xs text-muted-foreground">{formatTime(record.createdAt)}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {formatTime(record.createdAt)}
+                              </p>
                             </div>
                           </td>
                           <td className="py-3 px-4">
-                            <Badge variant={status.variant}>{status.label}</Badge>
+                            <Badge variant={status.variant}>
+                              {status.label}
+                            </Badge>
                           </td>
                           <td className="py-3 px-4">
                             <Badge
-                              variant={record.firstHalfPresent ? "outline" : "destructive"}
+                              variant={
+                                record.firstHalfPresent
+                                  ? "outline"
+                                  : "destructive"
+                              }
                               className={cn(
                                 "bg-transparent",
-                                record.firstHalfPresent ? "text-green-600 border-green-600" : "",
+                                record.firstHalfPresent
+                                  ? "text-green-600 border-green-600"
+                                  : ""
                               )}
                             >
                               {record.firstHalfPresent ? "Present" : "Absent"}
@@ -627,14 +813,25 @@ export default function AttendancePage() {
                           </td>
                           <td className="py-3 px-4">
                             <Badge
-                              variant={record.secondHalfPresent ? "outline" : "destructive"}
+                              variant={
+                                record.secondHalfPresent
+                                  ? "outline"
+                                  : "destructive"
+                              }
                               className={cn(
                                 "bg-transparent",
-                                record.secondHalfPresent ? "text-green-600 border-green-600" : "",
+                                record.secondHalfPresent
+                                  ? "text-green-600 border-green-600"
+                                  : ""
                               )}
                             >
                               {record.secondHalfPresent ? "Present" : "Absent"}
                             </Badge>
+                          </td>
+                          <td className="py-3 px-4">
+                            <p className="text-sm text-muted-foreground max-w-[150px] truncate">
+                              {record.note || "-"}
+                            </p>
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex gap-2">
@@ -657,11 +854,14 @@ export default function AttendancePage() {
                             </div>
                           </td>
                         </tr>
-                      )
+                      );
                     })
                   ) : (
                     <tr>
-                      <td colSpan={6} className="py-6 text-center text-muted-foreground">
+                      <td
+                        colSpan={7}
+                        className="py-6 text-center text-muted-foreground"
+                      >
                         No attendance records found for the selected filters.
                       </td>
                     </tr>
@@ -670,6 +870,36 @@ export default function AttendancePage() {
               </table>
             </div>
           </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-2 py-4">
+              <div className="text-sm text-muted-foreground">
+                Page {currentPage} of {totalPages} ({totalRecords} total
+                records)
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage <= 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage >= totalPages}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -694,12 +924,20 @@ export default function AttendancePage() {
                     <SelectItem key={user._id} value={user._id}>
                       <div className="flex items-center gap-2">
                         <Avatar className="h-6 w-6">
-                          <AvatarImage src={`https://avatar.vercel.sh/${user.username}`} />
-                          <AvatarFallback>{user.displayName.charAt(0)}</AvatarFallback>
+                          <AvatarImage
+                            src={`https://avatar.vercel.sh/${user.username}`}
+                          />
+                          <AvatarFallback>
+                            {user.displayName.charAt(0)}
+                          </AvatarFallback>
                         </Avatar>
                         <div>
-                          <span className="font-medium">{user.displayName}</span>
-                          <span className="text-xs text-muted-foreground ml-2">@{user.username}</span>
+                          <span className="font-medium">
+                            {user.displayName}
+                          </span>
+                          <span className="text-xs text-muted-foreground ml-2">
+                            @{user.username}
+                          </span>
                         </div>
                       </div>
                     </SelectItem>
@@ -713,7 +951,9 @@ export default function AttendancePage() {
                 id="date-input"
                 type="date"
                 value={formData.date}
-                onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, date: e.target.value }))
+                }
                 className="mt-1"
               />
             </div>
@@ -722,8 +962,11 @@ export default function AttendancePage() {
                 <Checkbox
                   id="first-half"
                   checked={formData.firstHalfPresent}
-                  onCheckedChange={(checked) => 
-                    setFormData(prev => ({ ...prev, firstHalfPresent: checked as boolean }))
+                  onCheckedChange={(checked) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      firstHalfPresent: checked as boolean,
+                    }))
                   }
                 />
                 <Label htmlFor="first-half">First Half Present</Label>
@@ -732,16 +975,39 @@ export default function AttendancePage() {
                 <Checkbox
                   id="second-half"
                   checked={formData.secondHalfPresent}
-                  onCheckedChange={(checked) => 
-                    setFormData(prev => ({ ...prev, secondHalfPresent: checked as boolean }))
+                  onCheckedChange={(checked) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      secondHalfPresent: checked as boolean,
+                    }))
                   }
                 />
                 <Label htmlFor="second-half">Second Half Present</Label>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Note: At least one half must be marked as present to create an
+                attendance record.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="note-input">Note (Optional)</Label>
+              <Input
+                id="note-input"
+                placeholder="Add a note..."
+                value={formData.note}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, note: e.target.value }))
+                }
+                className="mt-1"
+              />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={saving}>
+            <Button
+              variant="outline"
+              onClick={() => setCreateDialogOpen(false)}
+              disabled={saving}
+            >
               Cancel
             </Button>
             <Button onClick={handleCreateAttendance} disabled={saving}>
@@ -757,27 +1023,21 @@ export default function AttendancePage() {
           <DialogHeader>
             <DialogTitle>Edit Attendance Record</DialogTitle>
             <DialogDescription>
-              Update attendance record for <strong>{selectedRecord?.displayName}</strong>
+              Update attendance record for{" "}
+              <strong>{selectedRecord?.displayName}</strong>
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <Label htmlFor="edit-date-input">Date</Label>
-              <Input
-                id="edit-date-input"
-                type="date"
-                value={formData.date}
-                onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-                className="mt-1"
-              />
-            </div>
             <div className="space-y-3">
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="edit-first-half"
                   checked={formData.firstHalfPresent}
-                  onCheckedChange={(checked) => 
-                    setFormData(prev => ({ ...prev, firstHalfPresent: checked as boolean }))
+                  onCheckedChange={(checked) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      firstHalfPresent: checked as boolean,
+                    }))
                   }
                 />
                 <Label htmlFor="edit-first-half">First Half Present</Label>
@@ -786,16 +1046,39 @@ export default function AttendancePage() {
                 <Checkbox
                   id="edit-second-half"
                   checked={formData.secondHalfPresent}
-                  onCheckedChange={(checked) => 
-                    setFormData(prev => ({ ...prev, secondHalfPresent: checked as boolean }))
+                  onCheckedChange={(checked) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      secondHalfPresent: checked as boolean,
+                    }))
                   }
                 />
                 <Label htmlFor="edit-second-half">Second Half Present</Label>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Note: At least one half must be marked as present. To mark
+                completely absent, delete the record instead.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="edit-note-input">Note (Optional)</Label>
+              <Input
+                id="edit-note-input"
+                placeholder="Add a note..."
+                value={formData.note}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, note: e.target.value }))
+                }
+                className="mt-1"
+              />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={saving}>
+            <Button
+              variant="outline"
+              onClick={() => setEditDialogOpen(false)}
+              disabled={saving}
+            >
               Cancel
             </Button>
             <Button onClick={handleUpdateAttendance} disabled={saving}>
@@ -819,13 +1102,25 @@ export default function AttendancePage() {
               <Label>Date</Label>
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full justify-start text-left font-normal mt-1">
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start text-left font-normal mt-1"
+                  >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {bulkDate ? format(bulkDate, "PPP") : <span>Pick a date</span>}
+                    {bulkDate ? (
+                      format(bulkDate, "PPP")
+                    ) : (
+                      <span>Pick a date</span>
+                    )}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0">
-                  <Calendar mode="single" selected={bulkDate} onSelect={setBulkDate} initialFocus />
+                  <Calendar
+                    mode="single"
+                    selected={bulkDate}
+                    onSelect={setBulkDate}
+                    initialFocus
+                  />
                 </PopoverContent>
               </Popover>
             </div>
@@ -833,26 +1128,40 @@ export default function AttendancePage() {
               <Label>Select Employees</Label>
               <div className="border rounded-md p-3 max-h-48 overflow-y-auto mt-1">
                 {users.map((user) => (
-                  <div key={user._id} className="flex items-center space-x-2 py-1">
+                  <div
+                    key={user._id}
+                    className="flex items-center space-x-2 py-1"
+                  >
                     <Checkbox
                       id={`bulk-user-${user._id}`}
                       checked={bulkUsers.includes(user._id)}
                       onCheckedChange={(checked) => {
                         if (checked) {
-                          setBulkUsers(prev => [...prev, user._id])
+                          setBulkUsers((prev) => [...prev, user._id]);
                         } else {
-                          setBulkUsers(prev => prev.filter(id => id !== user._id))
+                          setBulkUsers((prev) =>
+                            prev.filter((id) => id !== user._id)
+                          );
                         }
                       }}
                     />
-                    <Label htmlFor={`bulk-user-${user._id}`} className="flex items-center gap-2 cursor-pointer">
+                    <Label
+                      htmlFor={`bulk-user-${user._id}`}
+                      className="flex items-center gap-2 cursor-pointer"
+                    >
                       <Avatar className="h-6 w-6">
-                        <AvatarImage src={`https://avatar.vercel.sh/${user.username}`} />
-                        <AvatarFallback>{user.displayName.charAt(0)}</AvatarFallback>
+                        <AvatarImage
+                          src={`https://avatar.vercel.sh/${user.username}`}
+                        />
+                        <AvatarFallback>
+                          {user.displayName.charAt(0)}
+                        </AvatarFallback>
                       </Avatar>
                       <div>
                         <span className="font-medium">{user.displayName}</span>
-                        <span className="text-xs text-muted-foreground ml-2">@{user.username}</span>
+                        <span className="text-xs text-muted-foreground ml-2">
+                          @{user.username}
+                        </span>
                       </div>
                     </Label>
                   </div>
@@ -862,7 +1171,7 @@ export default function AttendancePage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setBulkUsers(users.map(u => u._id))}
+                  onClick={() => setBulkUsers(users.map((u) => u._id))}
                 >
                   Select All
                 </Button>
@@ -880,7 +1189,9 @@ export default function AttendancePage() {
                 <Checkbox
                   id="bulk-first-half"
                   checked={bulkFirstHalf}
-                  onCheckedChange={(checked) => setBulkFirstHalf(checked as boolean)}
+                  onCheckedChange={(checked) =>
+                    setBulkFirstHalf(checked as boolean)
+                  }
                 />
                 <Label htmlFor="bulk-first-half">First Half Present</Label>
               </div>
@@ -888,14 +1199,20 @@ export default function AttendancePage() {
                 <Checkbox
                   id="bulk-second-half"
                   checked={bulkSecondHalf}
-                  onCheckedChange={(checked) => setBulkSecondHalf(checked as boolean)}
+                  onCheckedChange={(checked) =>
+                    setBulkSecondHalf(checked as boolean)
+                  }
                 />
                 <Label htmlFor="bulk-second-half">Second Half Present</Label>
               </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setBulkDialogOpen(false)} disabled={saving}>
+            <Button
+              variant="outline"
+              onClick={() => setBulkDialogOpen(false)}
+              disabled={saving}
+            >
               Cancel
             </Button>
             <Button onClick={handleBulkAttendance} disabled={saving}>
@@ -911,8 +1228,8 @@ export default function AttendancePage() {
           <DialogHeader>
             <DialogTitle>Delete Attendance Record</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete the attendance record for <strong>{selectedRecord?.displayName}</strong>{" "}
-              on{" "}
+              Are you sure you want to delete the attendance record for{" "}
+              <strong>{selectedRecord?.displayName}</strong> on{" "}
               <strong>
                 {selectedRecord?.date &&
                   new Date(selectedRecord.date).toLocaleDateString("en-US", {
@@ -941,15 +1258,23 @@ export default function AttendancePage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleting}
+            >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleting}>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={deleting}
+            >
               {deleting ? "Deleting..." : "Delete Record"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }
