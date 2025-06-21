@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
 import {
   Dialog,
   DialogContent,
@@ -15,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { CalendarIcon, Search, Filter, Download, Trash2 } from "lucide-react"
+import { CalendarIcon, Search, Filter, Download, Trash2, Plus, Edit, Users, Upload } from "lucide-react"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { format } from "date-fns"
@@ -31,40 +33,107 @@ interface AttendanceRecord {
   firstHalfPresent: boolean
   secondHalfPresent: boolean
   createdAt: string
+  updatedAt?: string
   formattedDate?: string
   id?: string
+}
+
+interface User {
+  _id: string
+  username: string
+  displayName: string
+  email?: string
 }
 
 export default function AttendancePage() {
   const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>([])
   const [filteredData, setFilteredData] = useState<AttendanceRecord[]>([])
+  const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [date, setDate] = useState<Date | undefined>(new Date())
   const [statusFilter, setStatusFilter] = useState("all")
+  
+  // Dialog states
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false)
+  
   const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null)
   const [password, setPassword] = useState("")
   const [deleting, setDeleting] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  // Form states
+  const [formData, setFormData] = useState({
+    userId: "",
+    username: "",
+    displayName: "",
+    date: format(new Date(), "yyyy-MM-dd"),
+    firstHalfPresent: false,
+    secondHalfPresent: false,
+  })
+
+  // Bulk operation states
+  const [bulkDate, setBulkDate] = useState<Date | undefined>(new Date())
+  const [bulkUsers, setBulkUsers] = useState<string[]>([])
+  const [bulkFirstHalf, setBulkFirstHalf] = useState(true)
+  const [bulkSecondHalf, setBulkSecondHalf] = useState(true)
+
+  const API_BASE = "http://localhost:5000/api/hr"
 
   useEffect(() => {
-    const fetchAttendanceData = async () => {
+    const fetchData = async () => {
       try {
-        const response = await fetch(process.env.NEXT_PUBLIC_ATTENDANCE_API_URL || "")
-        const data = await response.json()
-        setAttendanceData(data)
-        setFilteredData(data)
+        // Fetch attendance data
+        const attendanceResponse = await fetch(`${API_BASE}/attendance`)
+        
+        if (!attendanceResponse.ok) {
+          throw new Error(`Failed to fetch attendance: ${attendanceResponse.status}`)
+        }
+        
+        const attendanceResult = await attendanceResponse.json()
+        const attendanceArray = Array.isArray(attendanceResult) ? attendanceResult : []
+        setAttendanceData(attendanceArray)
+        setFilteredData(attendanceArray)
+
+        // Fetch users
+        const usersResponse = await fetch(`${API_BASE}/users`)
+        
+        if (!usersResponse.ok) {
+          throw new Error(`Failed to fetch users: ${usersResponse.status}`)
+        }
+        
+        const usersResult = await usersResponse.json()
+        const usersArray = Array.isArray(usersResult) ? usersResult : []
+        setUsers(usersArray)
       } catch (error) {
-        console.error("Error fetching attendance data:", error)
+        console.error("Error fetching data:", error)
+        // Set empty arrays as fallback
+        setAttendanceData([])
+        setFilteredData([])
+        setUsers([])
+        
+        toast({
+          title: "Error",
+          description: "Failed to fetch data. Please try again.",
+          variant: "destructive",
+        })
       } finally {
         setLoading(false)
       }
     }
 
-    fetchAttendanceData()
+    fetchData()
   }, [])
 
   useEffect(() => {
+    // Ensure attendanceData is an array before spreading
+    if (!Array.isArray(attendanceData)) {
+      return
+    }
+    
     let filtered = [...attendanceData]
 
     // Filter by search term
@@ -123,6 +192,144 @@ export default function AttendancePage() {
     })
   }
 
+  const resetForm = () => {
+    setFormData({
+      userId: "",
+      username: "",
+      displayName: "",
+      date: format(new Date(), "yyyy-MM-dd"),
+      firstHalfPresent: false,
+      secondHalfPresent: false,
+    })
+  }
+
+  const handleUserSelect = (userId: string) => {
+    const user = users.find(u => u._id === userId)
+    if (user) {
+      setFormData(prev => ({
+        ...prev,
+        userId: user._id,
+        username: user.username,
+        displayName: user.displayName,
+      }))
+    }
+  }
+
+  const handleCreateAttendance = async () => {
+    if (!formData.userId || !formData.date) {
+      toast({
+        title: "Validation Error",
+        description: "Please select a user and date.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setSaving(true)
+    try {
+      const response = await fetch(`${API_BASE}/attendance`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: formData.userId,
+          username: formData.username,
+          displayName: formData.displayName,
+          date: formData.date,
+          firstHalfPresent: formData.firstHalfPresent,
+          secondHalfPresent: formData.secondHalfPresent,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to create attendance: ${response.status}`)
+      }
+
+      const newRecord = await response.json()
+      setAttendanceData(prev => [newRecord, ...prev])
+      
+      toast({
+        title: "Success",
+        description: "Attendance record created successfully.",
+      })
+
+      setCreateDialogOpen(false)
+      resetForm()
+    } catch (error) {
+      console.error("Error creating attendance:", error)
+      toast({
+        title: "Error",
+        description: "Failed to create attendance record.",
+        variant: "destructive",
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleEditClick = (record: AttendanceRecord) => {
+    setSelectedRecord(record)
+    setFormData({
+      userId: record.userId,
+      username: record.username,
+      displayName: record.displayName,
+      date: record.date,
+      firstHalfPresent: record.firstHalfPresent,
+      secondHalfPresent: record.secondHalfPresent,
+    })
+    setEditDialogOpen(true)
+  }
+
+  const handleUpdateAttendance = async () => {
+    if (!selectedRecord) return
+
+    setSaving(true)
+    try {
+      const recordId = selectedRecord._id || selectedRecord.id
+      const response = await fetch(`${API_BASE}/attendance/${recordId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          firstHalfPresent: formData.firstHalfPresent,
+          secondHalfPresent: formData.secondHalfPresent,
+          date: formData.date,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to update attendance: ${response.status}`)
+      }
+
+      const updatedRecord = await response.json()
+      setAttendanceData(prev => 
+        prev.map(record => 
+          (record._id || record.id) === recordId ? updatedRecord : record
+        )
+      )
+
+      toast({
+        title: "Success",
+        description: "Attendance record updated successfully.",
+      })
+
+      setEditDialogOpen(false)
+      setSelectedRecord(null)
+      resetForm()
+    } catch (error) {
+      console.error("Error updating attendance:", error)
+      toast({
+        title: "Error",
+        description: "Failed to update attendance record.",
+        variant: "destructive",
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleDeleteClick = (record: AttendanceRecord) => {
     setSelectedRecord(record)
     setDeleteDialogOpen(true)
@@ -141,9 +348,7 @@ export default function AttendancePage() {
 
     if (!selectedRecord) return
 
-    // Get the record ID (check both _id and id properties)
     const recordId = selectedRecord._id || selectedRecord.id
-
     if (!recordId) {
       toast({
         title: "Error",
@@ -155,12 +360,7 @@ export default function AttendancePage() {
 
     setDeleting(true)
     try {
-      // Make DELETE request to the API
-      const apiUrl = `${process.env.NEXT_PUBLIC_ATTENDANCE_API_URL}/${recordId}`
-      console.log(`Attempting to delete record with ID: ${recordId}`)
-      console.log(`DELETE request to: ${apiUrl}`)
-
-      const response = await fetch(apiUrl, {
+      const response = await fetch(`${API_BASE}/attendance/${recordId}`, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
@@ -171,51 +371,13 @@ export default function AttendancePage() {
         throw new Error(`Failed to delete record: ${response.status} ${response.statusText}`)
       }
 
-      // Remove from local state only after successful API deletion
-      const updatedData = attendanceData.filter((record) => {
-        const currentId = record._id || record.id
-        return currentId !== recordId
-      })
-
-      setAttendanceData(updatedData)
-      setFilteredData(
-        updatedData.filter((record) => {
-          let matches = true
-
-          if (searchTerm) {
-            matches =
-              matches &&
-              (record.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                record.username.toLowerCase().includes(searchTerm.toLowerCase()))
-          }
-
-          if (date) {
-            const dateString = format(date, "yyyy-MM-dd")
-            matches = matches && record.date === dateString
-          }
-
-          if (statusFilter !== "all") {
-            if (statusFilter === "full") {
-              matches = matches && record.firstHalfPresent && record.secondHalfPresent
-            } else if (statusFilter === "half") {
-              matches =
-                matches &&
-                ((record.firstHalfPresent && !record.secondHalfPresent) ||
-                  (!record.firstHalfPresent && record.secondHalfPresent))
-            } else if (statusFilter === "first-half") {
-              matches = matches && record.firstHalfPresent
-            } else if (statusFilter === "second-half") {
-              matches = matches && record.secondHalfPresent
-            }
-          }
-
-          return matches
-        }),
+      setAttendanceData(prev => 
+        prev.filter(record => (record._id || record.id) !== recordId)
       )
 
       toast({
         title: "Record Deleted",
-        description: `Attendance record for ${selectedRecord.displayName} has been successfully deleted from the database.`,
+        description: `Attendance record for ${selectedRecord.displayName} has been successfully deleted.`,
       })
 
       setDeleteDialogOpen(false)
@@ -225,8 +387,7 @@ export default function AttendancePage() {
       console.error("Error deleting record:", error)
       toast({
         title: "Delete Failed",
-        description:
-          error instanceof Error ? error.message : "Failed to delete the attendance record from the database.",
+        description: error instanceof Error ? error.message : "Failed to delete the attendance record.",
         variant: "destructive",
       })
     } finally {
@@ -234,8 +395,65 @@ export default function AttendancePage() {
     }
   }
 
+  const handleBulkAttendance = async () => {
+    if (!bulkDate || bulkUsers.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please select a date and at least one user.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setSaving(true)
+    try {
+      const bulkData = bulkUsers.map(userId => {
+        const user = users.find(u => u._id === userId)
+        return {
+          userId,
+          username: user?.username || "",
+          displayName: user?.displayName || "",
+          date: format(bulkDate, "yyyy-MM-dd"),
+          firstHalfPresent: bulkFirstHalf,
+          secondHalfPresent: bulkSecondHalf,
+        }
+      })
+
+      const response = await fetch(`${API_BASE}/attendance/bulk`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ records: bulkData }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to create bulk attendance: ${response.status}`)
+      }
+
+      const newRecords = await response.json()
+      setAttendanceData(prev => [...newRecords, ...prev])
+
+      toast({
+        title: "Success",
+        description: `Created ${bulkUsers.length} attendance records successfully.`,
+      })
+
+      setBulkDialogOpen(false)
+      setBulkUsers([])
+    } catch (error) {
+      console.error("Error creating bulk attendance:", error)
+      toast({
+        title: "Error",
+        description: "Failed to create bulk attendance records.",
+        variant: "destructive",
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const exportToCSV = () => {
-    // Create CSV content
     const headers = ["Name", "Username", "Date", "Time", "Status", "First Half", "Second Half"]
     const csvContent = [
       headers.join(","),
@@ -253,7 +471,6 @@ export default function AttendancePage() {
       }),
     ].join("\n")
 
-    // Create download link
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
@@ -283,11 +500,11 @@ export default function AttendancePage() {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Attendance Records</h1>
-        <p className="text-muted-foreground">View and manage daily attendance records</p>
+        <h1 className="text-3xl font-bold tracking-tight">Attendance Management</h1>
+        <p className="text-muted-foreground">Manage daily attendance records with full CRUD operations</p>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+      <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -328,15 +545,25 @@ export default function AttendancePage() {
           </Select>
         </div>
 
-        <Button onClick={exportToCSV} className="w-full sm:w-auto">
-          <Download className="mr-2 h-4 w-4" />
-          Export CSV
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+          <Button onClick={() => setCreateDialogOpen(true)} className="w-full sm:w-auto">
+            <Plus className="mr-2 h-4 w-4" />
+            Add Record
+          </Button>
+          <Button onClick={() => setBulkDialogOpen(true)} variant="outline" className="w-full sm:w-auto">
+            <Upload className="mr-2 h-4 w-4" />
+            Bulk Add
+          </Button>
+          <Button onClick={exportToCSV} variant="outline" className="w-full sm:w-auto">
+            <Download className="mr-2 h-4 w-4" />
+            Export CSV
+          </Button>
+        </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Attendance List</CardTitle>
+          <CardTitle>Attendance Records ({filteredData.length})</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="rounded-md border">
@@ -410,15 +637,24 @@ export default function AttendancePage() {
                             </Badge>
                           </td>
                           <td className="py-3 px-4">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled
-                              onClick={() => handleDeleteClick(record)}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleEditClick(record)}
+                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDeleteClick(record)}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       )
@@ -437,6 +673,238 @@ export default function AttendancePage() {
         </CardContent>
       </Card>
 
+      {/* Create Attendance Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Create Attendance Record</DialogTitle>
+            <DialogDescription>
+              Add a new attendance record for an employee.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="user-select">Select Employee</Label>
+              <Select value={formData.userId} onValueChange={handleUserSelect}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Choose an employee" />
+                </SelectTrigger>
+                <SelectContent>
+                  {users.map((user) => (
+                    <SelectItem key={user._id} value={user._id}>
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src={`https://avatar.vercel.sh/${user.username}`} />
+                          <AvatarFallback>{user.displayName.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <span className="font-medium">{user.displayName}</span>
+                          <span className="text-xs text-muted-foreground ml-2">@{user.username}</span>
+                        </div>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="date-input">Date</Label>
+              <Input
+                id="date-input"
+                type="date"
+                value={formData.date}
+                onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+                className="mt-1"
+              />
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="first-half"
+                  checked={formData.firstHalfPresent}
+                  onCheckedChange={(checked) => 
+                    setFormData(prev => ({ ...prev, firstHalfPresent: checked as boolean }))
+                  }
+                />
+                <Label htmlFor="first-half">First Half Present</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="second-half"
+                  checked={formData.secondHalfPresent}
+                  onCheckedChange={(checked) => 
+                    setFormData(prev => ({ ...prev, secondHalfPresent: checked as boolean }))
+                  }
+                />
+                <Label htmlFor="second-half">Second Half Present</Label>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateAttendance} disabled={saving}>
+              {saving ? "Creating..." : "Create Record"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Attendance Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Attendance Record</DialogTitle>
+            <DialogDescription>
+              Update attendance record for <strong>{selectedRecord?.displayName}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="edit-date-input">Date</Label>
+              <Input
+                id="edit-date-input"
+                type="date"
+                value={formData.date}
+                onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+                className="mt-1"
+              />
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="edit-first-half"
+                  checked={formData.firstHalfPresent}
+                  onCheckedChange={(checked) => 
+                    setFormData(prev => ({ ...prev, firstHalfPresent: checked as boolean }))
+                  }
+                />
+                <Label htmlFor="edit-first-half">First Half Present</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="edit-second-half"
+                  checked={formData.secondHalfPresent}
+                  onCheckedChange={(checked) => 
+                    setFormData(prev => ({ ...prev, secondHalfPresent: checked as boolean }))
+                  }
+                />
+                <Label htmlFor="edit-second-half">Second Half Present</Label>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateAttendance} disabled={saving}>
+              {saving ? "Updating..." : "Update Record"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Create Dialog */}
+      <Dialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Bulk Create Attendance</DialogTitle>
+            <DialogDescription>
+              Create attendance records for multiple employees at once.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start text-left font-normal mt-1">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {bulkDate ? format(bulkDate, "PPP") : <span>Pick a date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar mode="single" selected={bulkDate} onSelect={setBulkDate} initialFocus />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div>
+              <Label>Select Employees</Label>
+              <div className="border rounded-md p-3 max-h-48 overflow-y-auto mt-1">
+                {users.map((user) => (
+                  <div key={user._id} className="flex items-center space-x-2 py-1">
+                    <Checkbox
+                      id={`bulk-user-${user._id}`}
+                      checked={bulkUsers.includes(user._id)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setBulkUsers(prev => [...prev, user._id])
+                        } else {
+                          setBulkUsers(prev => prev.filter(id => id !== user._id))
+                        }
+                      }}
+                    />
+                    <Label htmlFor={`bulk-user-${user._id}`} className="flex items-center gap-2 cursor-pointer">
+                      <Avatar className="h-6 w-6">
+                        <AvatarImage src={`https://avatar.vercel.sh/${user.username}`} />
+                        <AvatarFallback>{user.displayName.charAt(0)}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <span className="font-medium">{user.displayName}</span>
+                        <span className="text-xs text-muted-foreground ml-2">@{user.username}</span>
+                      </div>
+                    </Label>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2 mt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBulkUsers(users.map(u => u._id))}
+                >
+                  Select All
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBulkUsers([])}
+                >
+                  Clear All
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="bulk-first-half"
+                  checked={bulkFirstHalf}
+                  onCheckedChange={(checked) => setBulkFirstHalf(checked as boolean)}
+                />
+                <Label htmlFor="bulk-first-half">First Half Present</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="bulk-second-half"
+                  checked={bulkSecondHalf}
+                  onCheckedChange={(checked) => setBulkSecondHalf(checked as boolean)}
+                />
+                <Label htmlFor="bulk-second-half">Second Half Present</Label>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkDialogOpen(false)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button onClick={handleBulkAttendance} disabled={saving}>
+              {saving ? "Creating..." : `Create ${bulkUsers.length} Records`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
@@ -454,14 +922,14 @@ export default function AttendancePage() {
                     day: "numeric",
                   })}
               </strong>
-              ?
+              ? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label htmlFor="password" className="text-sm font-medium">
+              <Label htmlFor="password" className="text-sm font-medium">
                 Admin Password
-              </label>
+              </Label>
               <Input
                 id="password"
                 type="password"
@@ -476,7 +944,7 @@ export default function AttendancePage() {
             <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm} disabled>
+            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleting}>
               {deleting ? "Deleting..." : "Delete Record"}
             </Button>
           </DialogFooter>
