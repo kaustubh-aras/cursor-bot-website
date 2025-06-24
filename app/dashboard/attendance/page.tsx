@@ -83,7 +83,7 @@ export default function AttendancePage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedUserId, setSelectedUserId] = useState<string>(""); // Updated default value
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
