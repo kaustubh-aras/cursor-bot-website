@@ -45,7 +45,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 
-interface AttendanceRecord {
+export interface AttendanceRecord {
   _id: string;
   userId: string;
   username: string;
@@ -53,16 +53,22 @@ interface AttendanceRecord {
   date: string;
   firstHalfPresent: boolean;
   secondHalfPresent: boolean;
-  note?: string;
   createdAt: string;
-  updatedAt?: string;
+  modifiedAt?: string;
+  modifiedByHR?: boolean;
+  markedByHR?: boolean;
+  autoMarkedAbsent?: boolean;
+  hrNote?: string;
+  status?: string;
+  note?: string;
 }
 
-interface User {
-  _id: string;
+export interface User {
+  _id?: string;
+  userId: string;
   username: string;
   displayName: string;
-  email?: string;
+  isActive: boolean;
 }
 
 interface ApiResponse {
@@ -74,6 +80,18 @@ interface ApiResponse {
     totalRecords: number;
     limit: number;
   };
+}
+
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+}
+
+export interface StatusVariant {
+  label: string;
+  variant: "default" | "secondary" | "warning" | "destructive";
 }
 
 export default function AttendancePage() {
@@ -95,7 +113,6 @@ export default function AttendancePage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
 
   const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(
     null
@@ -115,13 +132,7 @@ export default function AttendancePage() {
     note: "",
   });
 
-  // Bulk operation states
-  const [bulkDate, setBulkDate] = useState<Date | undefined>(new Date());
-  const [bulkUsers, setBulkUsers] = useState<string[]>([]);
-  const [bulkFirstHalf, setBulkFirstHalf] = useState(true);
-  const [bulkSecondHalf, setBulkSecondHalf] = useState(true);
-
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
 
   // Fetch attendance data with proper API filtering
   const fetchAttendanceData = useCallback(async () => {
@@ -143,13 +154,23 @@ export default function AttendancePage() {
 
       const response = await fetch(`${API_BASE}/api/hr/attendance?${params}`);
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Fetch attendance error:", response.status, errorText);
-        throw new Error(`Failed to fetch attendance: ${response.status}`);
+        const errorBody = await response.json();
+        toast({
+          title: "Error",
+          description: errorBody.message || "Something went wrong",
+          variant: "destructive",
+        });
       }
 
       const result: ApiResponse = await response.json();
       console.log("Attendance API response:", result); // Debug log
+
+      if (result.success && result.data.length === 0) {
+        toast({
+          title: "No records",
+          description: "No attendance found for selected filters.",
+        });
+      }
 
       if (result.success) {
         setAttendanceData(result.data || []);
@@ -220,32 +241,50 @@ export default function AttendancePage() {
       record.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       record.username.toLowerCase().includes(searchTerm.toLowerCase());
 
+    const normalizedStatus = record.status?.toLowerCase() || "";
+
     const matchesStatus =
       statusFilter === "all" ||
-      (statusFilter === "full" &&
-        record.firstHalfPresent &&
-        record.secondHalfPresent) ||
-      (statusFilter === "half" &&
-        ((record.firstHalfPresent && !record.secondHalfPresent) ||
-          (!record.firstHalfPresent && record.secondHalfPresent))) ||
-      (statusFilter === "first-half" && record.firstHalfPresent) ||
-      (statusFilter === "second-half" && record.secondHalfPresent) ||
-      (statusFilter === "absent" &&
-        !record.firstHalfPresent &&
-        !record.secondHalfPresent);
+      (statusFilter === "full" && normalizedStatus === "present") ||
+      (statusFilter === "half" && normalizedStatus === "partial") ||
+      (statusFilter === "first-half" &&
+        normalizedStatus === "partial leave (second)") ||
+      (statusFilter === "second-half" &&
+        normalizedStatus === "partial leave (first)") ||
+      (statusFilter === "leave" &&
+        (normalizedStatus === "leave" ||
+          normalizedStatus.startsWith("partial leave"))) ||
+      (statusFilter === "absent" && normalizedStatus === "absent");
 
     return matchesSearch && matchesStatus;
   });
 
-  const getAttendanceStatus = (record: AttendanceRecord) => {
-    if (record.firstHalfPresent && record.secondHalfPresent) {
-      return { label: "Full Day", variant: "default" as const };
-    } else if (record.firstHalfPresent) {
-      return { label: "First Half", variant: "secondary" as const };
-    } else if (record.secondHalfPresent) {
-      return { label: "Second Half", variant: "secondary" as const };
-    } else {
-      return { label: "Absent", variant: "destructive" as const };
+  // Fixed getAttendanceStatus to prioritize backend status
+  const getAttendanceStatus = (record: AttendanceRecord): StatusVariant => {
+    const status = record.status?.toLowerCase();
+    switch (status) {
+      case "present":
+        return { label: "Full Day", variant: "default" };
+      case "absent":
+        return { label: "Absent", variant: "destructive" };
+      case "leave":
+        return { label: "Leave", variant: "warning" };
+      case "partial":
+        return { label: "Partial", variant: "secondary" };
+      case "partial leave (first)":
+        return { label: "Leave - First Half", variant: "secondary" };
+      case "partial leave (second)":
+        return { label: "Leave - Second Half", variant: "secondary" };
+      case "conflict (leave & present)":
+        return { label: "Conflict", variant: "destructive" };
+      default:
+        if (record.firstHalfPresent && record.secondHalfPresent)
+          return { label: "Full Day", variant: "default" };
+        if (record.firstHalfPresent)
+          return { label: "First Half", variant: "secondary" };
+        if (record.secondHalfPresent)
+          return { label: "Second Half", variant: "secondary" };
+        return { label: "Absent", variant: "destructive" };
     }
   };
 
@@ -270,12 +309,13 @@ export default function AttendancePage() {
     });
   };
 
+  // Updated user select logic to use user.userId
   const handleUserSelect = (userId: string) => {
-    const user = users.find((u) => u._id === userId);
+    const user = users.find((u) => u.userId === userId);
     if (user) {
       setFormData((prev) => ({
         ...prev,
-        userId: user._id,
+        userId: user.userId,
         username: user.username,
         displayName: user.displayName,
       }));
@@ -292,21 +332,10 @@ export default function AttendancePage() {
       return;
     }
 
-    // Check if both halves are being marked as absent
-    if (!formData.firstHalfPresent && !formData.secondHalfPresent) {
-      toast({
-        title: "Validation Error",
-        description:
-          "Cannot create attendance record with both halves absent. Please mark at least one half as present.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setSaving(true);
     try {
       // Find the selected user to get complete user data
-      const selectedUser = users.find((u) => u._id === formData.userId);
+      const selectedUser = users.find((u) => u.userId === formData.userId);
       if (!selectedUser) {
         toast({
           title: "Error",
@@ -318,7 +347,7 @@ export default function AttendancePage() {
       }
 
       const requestBody = {
-        _id: formData.userId,
+        userId: formData.userId,
         username: selectedUser.username,
         displayName: selectedUser.displayName,
         date: formData.date,
@@ -339,16 +368,35 @@ export default function AttendancePage() {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Create attendance error:", response.status, errorText);
+        const errorData = await response.json();
+
+        if (response.status === 409) {
+          toast({
+            title: "Already Marked",
+            description: errorData.message || "Attendance already exists.",
+            variant: "default",
+          });
+          return;
+        }
+
+        console.error("Create attendance error:", response.status, errorData);
         throw new Error(
-          `Failed to create attendance: ${response.status} - ${errorText}`
+          `Failed to create attendance: ${response.status} - ${JSON.stringify(
+            errorData
+          )}`
         );
       }
 
+      const statusText =
+        !formData.firstHalfPresent && !formData.secondHalfPresent
+          ? "Absent"
+          : formData.firstHalfPresent && formData.secondHalfPresent
+          ? "Present"
+          : "Partial";
+
       toast({
-        title: "Success",
-        description: "Attendance record created successfully.",
+        title: "Attendance Marked",
+        description: `Successfully marked as ${statusText} for ${selectedUser.displayName} on ${formData.date}.`,
       });
 
       setCreateDialogOpen(false);
@@ -491,63 +539,6 @@ export default function AttendancePage() {
     }
   };
 
-  const handleBulkAttendance = async () => {
-    if (!bulkDate || bulkUsers.length === 0) {
-      toast({
-        title: "Validation Error",
-        description: "Please select a date and at least one user.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const bulkData = bulkUsers.map((userId) => {
-        const user = users.find((u) => u._id === userId);
-        return {
-          userId,
-          date: format(bulkDate, "yyyy-MM-dd"),
-          firstHalfPresent: bulkFirstHalf,
-          secondHalfPresent: bulkSecondHalf,
-        };
-      });
-
-      const response = await fetch(`${API_BASE}/api/hr/attendance/bulk`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          operation: "mark",
-          data: bulkData,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to create bulk attendance: ${response.status}`);
-      }
-
-      toast({
-        title: "Success",
-        description: `Created ${bulkUsers.length} attendance records successfully.`,
-      });
-
-      setBulkDialogOpen(false);
-      setBulkUsers([]);
-      fetchAttendanceData(); // Refresh data
-    } catch (error) {
-      console.error("Error creating bulk attendance:", error);
-      toast({
-        title: "Error",
-        description: "Failed to create bulk attendance records.",
-        variant: "destructive",
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const exportToCSV = () => {
     const headers = [
       "Name",
@@ -676,6 +667,9 @@ export default function AttendancePage() {
               <SelectItem value="first-half">First Half</SelectItem>
               <SelectItem value="second-half">Second Half</SelectItem>
               <SelectItem value="absent">Absent</SelectItem>
+              <SelectItem value="leave">Leave</SelectItem>
+              <SelectItem value="conflict">Conflict</SelectItem>
+              <SelectItem value="partial">Partial</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -687,16 +681,6 @@ export default function AttendancePage() {
           >
             <Plus className="mr-2 h-4 w-4" />
             Add Record
-          </Button>
-
-          <Button
-            disabled
-            onClick={() => setBulkDialogOpen(true)}
-            variant="outline"
-            className="w-full sm:w-auto"
-          >
-            <Upload className="mr-2 h-4 w-4" />
-            Bulk Add
           </Button>
 
           <Button
@@ -780,7 +764,22 @@ export default function AttendancePage() {
                             </div>
                           </td>
                           <td className="py-3 px-4">
-                            <Badge variant={status.variant}>
+                            <Badge
+                              variant={
+                                [
+                                  "default",
+                                  "secondary",
+                                  "destructive",
+                                  "outline",
+                                ].includes(status.variant)
+                                  ? (status.variant as
+                                      | "default"
+                                      | "secondary"
+                                      | "destructive"
+                                      | "outline")
+                                  : "secondary" // fallback
+                              }
+                            >
                               {status.label}
                             </Badge>
                           </td>
@@ -911,7 +910,7 @@ export default function AttendancePage() {
                 </SelectTrigger>
                 <SelectContent>
                   {users.map((user) => (
-                    <SelectItem key={user._id} value={user._id}>
+                    <SelectItem key={user._id} value={user.userId}>
                       <div className="flex items-center gap-2">
                         <Avatar className="h-6 w-6">
                           <AvatarImage
@@ -1065,140 +1064,6 @@ export default function AttendancePage() {
             </Button>
             <Button onClick={handleUpdateAttendance} disabled={saving}>
               {saving ? "Updating..." : "Update Record"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Bulk Create Dialog */}
-      <Dialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Bulk Create Attendance</DialogTitle>
-            <DialogDescription>
-              Create attendance records for multiple employees at once.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start text-left font-normal mt-1"
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {bulkDate ? (
-                      format(bulkDate, "PPP")
-                    ) : (
-                      <span>Pick a date</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={bulkDate}
-                    onSelect={setBulkDate}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-            <div>
-              <Label>Select Employees</Label>
-              <div className="border rounded-md p-3 max-h-48 overflow-y-auto mt-1">
-                {users.map((user) => (
-                  <div
-                    key={user._id}
-                    className="flex items-center space-x-2 py-1"
-                  >
-                    <Checkbox
-                      id={`bulk-user-${user._id}`}
-                      checked={bulkUsers.includes(user._id)}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setBulkUsers((prev) => [...prev, user._id]);
-                        } else {
-                          setBulkUsers((prev) =>
-                            prev.filter((id) => id !== user._id)
-                          );
-                        }
-                      }}
-                    />
-                    <Label
-                      htmlFor={`bulk-user-${user._id}`}
-                      className="flex items-center gap-2 cursor-pointer"
-                    >
-                      <Avatar className="h-6 w-6">
-                        <AvatarImage
-                          src={`https://avatar.vercel.sh/${user.username}`}
-                        />
-                        <AvatarFallback>
-                          {user.displayName.charAt(0)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <span className="font-medium">{user.displayName}</span>
-                        <span className="text-xs text-muted-foreground ml-2">
-                          @{user.username}
-                        </span>
-                      </div>
-                    </Label>
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-2 mt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setBulkUsers(users.map((u) => u._id))}
-                >
-                  Select All
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setBulkUsers([])}
-                >
-                  Clear All
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-3">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="bulk-first-half"
-                  checked={bulkFirstHalf}
-                  onCheckedChange={(checked) =>
-                    setBulkFirstHalf(checked as boolean)
-                  }
-                />
-                <Label htmlFor="bulk-first-half">First Half Present</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="bulk-second-half"
-                  checked={bulkSecondHalf}
-                  onCheckedChange={(checked) =>
-                    setBulkSecondHalf(checked as boolean)
-                  }
-                />
-                <Label htmlFor="bulk-second-half">Second Half Present</Label>
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setBulkDialogOpen(false)}
-              disabled={saving}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleBulkAttendance} disabled={saving}>
-              {saving ? "Creating..." : `Create ${bulkUsers.length} Records`}
             </Button>
           </DialogFooter>
         </DialogContent>

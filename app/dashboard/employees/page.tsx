@@ -1,128 +1,147 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
-import { Search, Calendar, Clock, User } from "lucide-react"
-import Link from "next/link"
+import { useEffect, useState } from "react";
+import { Input } from "@/components/ui/input";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Search, Calendar, Clock, User } from "lucide-react";
+import Link from "next/link";
 
-interface Employee {
-  userId: string
-  username: string
-  displayName: string
-  attendanceCount: number
-  leaveCount: number
-  lastSeen: string
-  status: "present" | "absent" | "on-leave"
+interface User {
+  userId: string;
+  username: string;
+  displayName: string;
+  attendanceCount: number;
+  leaveCount: number;
+  lastSeen: string;
+  status: "present" | "absent" | "on-leave";
 }
 
 export default function EmployeesPage() {
-  const [employees, setEmployees] = useState<Employee[]>([])
-  const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([])
-  const [searchTerm, setSearchTerm] = useState("")
-  const [loading, setLoading] = useState(true)
+  const [users, setUsers] = useState<User[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
 
   useEffect(() => {
-    const fetchEmployeeData = async () => {
+    const fetchUserData = async () => {
       try {
-        const [attendanceRes, leaveRes] = await Promise.all([
-          fetch(process.env.NEXT_PUBLIC_ATTENDANCE_API_URL || ""),
-          fetch(process.env.NEXT_PUBLIC_LEAVES_API_URL || ""),
-        ])
+        const [usersRes, attendanceRes, leaveRes] = await Promise.all([
+          fetch(`${baseUrl}/api/hr/users`),
+          fetch(`${baseUrl}/api/hr/attendance`),
+          fetch(`${baseUrl}/api/leaves`),
+        ]);
 
-        const attendanceData = await attendanceRes.json()
-        const leaveData = await leaveRes.json()
+        const usersJson = await usersRes.json();
+        const attendanceJson = await attendanceRes.json();
+        const leaveJson = await leaveRes.json();
 
-        // Create employee map
-        const employeeMap = new Map<string, Employee>()
+        const usersData = Array.isArray(usersJson)
+          ? usersJson
+          : usersJson.data || [];
 
-        // Process attendance data
+        const attendanceData = Array.isArray(attendanceJson)
+          ? attendanceJson
+          : attendanceJson.data || [];
+
+        const leaveData = Array.isArray(leaveJson)
+          ? leaveJson
+          : leaveJson.data || [];
+
+        const today = new Date().toISOString().split("T")[0];
+
+        const userMap = new Map<string, User>();
+
+        usersData.forEach((user: any) => {
+          userMap.set(user.userId, {
+            userId: user.userId,
+            username: user.username,
+            displayName: user.displayName,
+            attendanceCount: 0,
+            leaveCount: 0,
+            lastSeen: "-",
+            status: "absent",
+          });
+        });
+
         attendanceData.forEach((record: any) => {
-          if (!employeeMap.has(record.userId)) {
-            employeeMap.set(record.userId, {
-              userId: record.userId,
-              username: record.username,
-              displayName: record.displayName,
-              attendanceCount: 0,
-              leaveCount: 0,
-              lastSeen: record.date,
-              status: "absent" as const,
-            })
+          const user = userMap.get(record.userId);
+          if (user) {
+            user.attendanceCount++;
+            if (
+              record.date === today &&
+              record.firstHalfPresent &&
+              record.secondHalfPresent
+            ) {
+              user.status = "present";
+            }
+            if (
+              user.lastSeen === "-" ||
+              new Date(record.date) > new Date(user.lastSeen)
+            ) {
+              user.lastSeen = record.date;
+            }
           }
+        });
 
-          const employee = employeeMap.get(record.userId)!
-          employee.attendanceCount++
-
-          // Check if present today
-          const today = new Date().toISOString().split("T")[0]
-          if (record.date === today && record.firstHalfPresent && record.secondHalfPresent) {
-            employee.status = "present"
-          }
-
-          // Update last seen
-          if (new Date(record.date) > new Date(employee.lastSeen)) {
-            employee.lastSeen = record.date
-          }
-        })
-
-        // Process leave data
         leaveData.forEach((record: any) => {
-          if (!employeeMap.has(record.userId)) {
-            employeeMap.set(record.userId, {
-              userId: record.userId,
-              username: record.username,
-              displayName: record.displayName,
-              attendanceCount: 0,
-              leaveCount: 0,
-              lastSeen: record.date,
-              status: "absent" as const,
-            })
+          const user = userMap.get(record.userId);
+          if (user) {
+            user.leaveCount++;
+            if (record.date === today) {
+              user.status = "on-leave";
+            }
+            if (
+              user.lastSeen === "-" ||
+              new Date(record.date) > new Date(user.lastSeen)
+            ) {
+              user.lastSeen = record.date;
+            }
           }
+        });
 
-          const employee = employeeMap.get(record.userId)!
-          employee.leaveCount++
-
-          // Check if on leave today
-          const today = new Date().toISOString().split("T")[0]
-          if (record.date === today) {
-            employee.status = "on-leave"
-          }
-        })
-
-        const employeeList = Array.from(employeeMap.values())
-        setEmployees(employeeList)
-        setFilteredEmployees(employeeList)
+        const userList = Array.from(userMap.values());
+        console.log("Final Rendered Users:", userList);
+        setUsers(userList);
+        setFilteredUsers(userList);
       } catch (error) {
-        console.error("Error fetching employee data:", error)
+        console.error("Error fetching user data:", error);
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }
+    };
 
-    fetchEmployeeData()
-  }, [])
+    fetchUserData();
+  }, []);
 
   useEffect(() => {
-    const filtered = employees.filter(
-      (employee) =>
-        employee.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        employee.username.toLowerCase().includes(searchTerm.toLowerCase()),
-    )
-    setFilteredEmployees(filtered)
-  }, [searchTerm, employees])
+    const filtered = users.filter(
+      (user) =>
+        user.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.username.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    setFilteredUsers(filtered);
+  }, [searchTerm, users]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case "present":
-        return "bg-green-100 text-green-800"
+        return "bg-green-100 text-green-800";
       case "on-leave":
-        return "bg-yellow-100 text-yellow-800"
+        return "bg-yellow-100 text-yellow-800";
       default:
-        return "bg-gray-100 text-gray-800"
+        return "bg-gray-100 text-gray-800";
     }
-  }
+  };
 
   if (loading) {
     return (
@@ -137,14 +156,16 @@ export default function EmployeesPage() {
           </div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Employees</h1>
-        <p className="text-muted-foreground">Manage and view employee attendance records</p>
+        <p className="text-muted-foreground">
+          Manage and view employee attendance records
+        </p>
       </div>
 
       <div className="relative">
@@ -158,20 +179,28 @@ export default function EmployeesPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filteredEmployees.map((employee) => (
-          <Link key={employee.userId} href={`/dashboard/employees/${employee.userId}`}>
+        {filteredUsers.map((user) => (
+          <Link key={user.userId} href={`/dashboard/employees/${user.userId}`}>
             <Card className="hover:shadow-md transition-shadow cursor-pointer">
               <CardHeader className="pb-3">
                 <div className="flex items-center space-x-3">
                   <Avatar className="h-10 w-10">
-                    <AvatarImage src={`https://avatar.vercel.sh/${employee.username}`} />
-                    <AvatarFallback>{employee.displayName.charAt(0)}</AvatarFallback>
+                    <AvatarImage
+                      src={`https://avatar.vercel.sh/${user.username}`}
+                    />
+                    <AvatarFallback>
+                      {user.displayName.charAt(0)}
+                    </AvatarFallback>
                   </Avatar>
                   <div className="flex-1">
-                    <CardTitle className="text-lg">{employee.displayName}</CardTitle>
-                    <CardDescription>@{employee.username}</CardDescription>
+                    <CardTitle className="text-lg">
+                      {user.displayName}
+                    </CardTitle>
+                    <CardDescription>@{user.username}</CardDescription>
                   </div>
-                  <Badge className={getStatusColor(employee.status)}>{employee.status.replace("-", " ")}</Badge>
+                  <Badge className={getStatusColor(user.status)}>
+                    {user.status.replace("-", " ")}
+                  </Badge>
                 </div>
               </CardHeader>
               <CardContent>
@@ -180,22 +209,34 @@ export default function EmployeesPage() {
                     <div className="flex items-center justify-center">
                       <Clock className="h-4 w-4 text-muted-foreground" />
                     </div>
-                    <div className="text-2xl font-bold">{employee.attendanceCount}</div>
-                    <div className="text-xs text-muted-foreground">Days Present</div>
+                    <div className="text-2xl font-bold">
+                      {user.attendanceCount}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Days Present
+                    </div>
                   </div>
                   <div className="space-y-1">
                     <div className="flex items-center justify-center">
                       <Calendar className="h-4 w-4 text-muted-foreground" />
                     </div>
-                    <div className="text-2xl font-bold">{employee.leaveCount}</div>
-                    <div className="text-xs text-muted-foreground">Leaves Taken</div>
+                    <div className="text-2xl font-bold">{user.leaveCount}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Leaves Taken
+                    </div>
                   </div>
                   <div className="space-y-1">
                     <div className="flex items-center justify-center">
                       <User className="h-4 w-4 text-muted-foreground" />
                     </div>
-                    <div className="text-sm font-medium">{new Date(employee.lastSeen).toLocaleDateString()}</div>
-                    <div className="text-xs text-muted-foreground">Last Seen</div>
+                    <div className="text-sm font-medium">
+                      {user.lastSeen === "-"
+                        ? "-"
+                        : new Date(user.lastSeen).toLocaleDateString()}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Last Seen
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -204,13 +245,17 @@ export default function EmployeesPage() {
         ))}
       </div>
 
-      {filteredEmployees.length === 0 && (
+      {filteredUsers.length === 0 && (
         <div className="text-center py-12">
           <User className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-semibold text-gray-900">No employees found</h3>
-          <p className="mt-1 text-sm text-gray-500">Try adjusting your search criteria.</p>
+          <h3 className="mt-2 text-sm font-semibold text-gray-900">
+            No users found
+          </h3>
+          <p className="mt-1 text-sm text-gray-500">
+            Try adjusting your search criteria.
+          </p>
         </div>
       )}
     </div>
-  )
+  );
 }

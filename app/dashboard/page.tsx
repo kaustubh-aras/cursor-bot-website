@@ -33,19 +33,21 @@ export default function Dashboard() {
   const [leaveData, setLeaveData] = useState<LeaveData[]>([])
   const [loading, setLoading] = useState(true)
 
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL
+
   useEffect(() => {
     const fetchData = async () => {
       try {
         const [attendanceRes, leaveRes] = await Promise.all([
-          fetch(process.env.NEXT_PUBLIC_ATTENDANCE_API_URL || ""),
-          fetch(process.env.NEXT_PUBLIC_LEAVES_API_URL || ""),
+          fetch(`${baseUrl}/api/hr/attendance`),
+          fetch(`${baseUrl}/api/leaves`),
         ])
 
-        const attendance = await attendanceRes.json()
-        const leaves = await leaveRes.json()
+        const attendanceJson = await attendanceRes.json()
+        const leaveJson = await leaveRes.json()
 
-        setAttendanceData(attendance)
-        setLeaveData(leaves)
+        setAttendanceData(attendanceJson.data || [])
+        setLeaveData(leaveJson.data || [])
       } catch (error) {
         console.error("Error fetching data:", error)
       } finally {
@@ -56,17 +58,18 @@ export default function Dashboard() {
     fetchData()
   }, [])
 
-  const totalEmployees = new Set([...attendanceData.map((a) => a.userId), ...leaveData.map((l) => l.userId)]).size
+  const today = new Date().toISOString().split("T")[0]
 
-  const todayAttendance = attendanceData.filter((a) => {
-    const today = new Date().toISOString().split("T")[0]
-    return a.date === today
-  }).length
+  const uniqueEmployeeIds = new Set([
+    ...attendanceData.map((a) => a.userId),
+    ...leaveData.map((l) => l.userId),
+  ])
 
-  const todayLeaves = leaveData.filter((l) => {
-    const today = new Date().toISOString().split("T")[0]
-    return l.date === today
-  }).length
+  const totalEmployees = uniqueEmployeeIds.size
+
+  const todayAttendance = attendanceData.filter((a) => a.date === today).length
+
+  const todayLeaves = leaveData.filter((l) => l.date === today).length
 
   const attendanceRate = totalEmployees > 0 ? ((todayAttendance / totalEmployees) * 100).toFixed(1) : "0"
 
