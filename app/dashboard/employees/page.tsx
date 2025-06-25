@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Search, Calendar, Clock, User } from "lucide-react";
 import Link from "next/link";
+import { startOfMonth, endOfMonth } from "date-fns";
 
 interface User {
   userId: string;
@@ -31,37 +32,46 @@ export default function EmployeesPage() {
   const [loading, setLoading] = useState(true);
 
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const start = startOfMonth(new Date());
+  const end = endOfMonth(new Date());
+
+  const fetchAllPaginatedData = async (url: string) => {
+    let page = 1;
+    const limit = 50;
+    let allData: any[] = [];
+    let hasMore = true;
+
+    while (hasMore) {
+      const res = await fetch(`${url}?page=${page}&limit=${limit}`);
+      const json = await res.json();
+      const data = Array.isArray(json) ? json : json.data || [];
+
+      allData = [...allData, ...data];
+
+      if (json.pagination && json.pagination.pages && page < json.pagination.pages) {
+        page++;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    return allData;
+  };
 
   useEffect(() => {
     const fetchUserData = async () => {
       try {
-        const [usersRes, attendanceRes, leaveRes] = await Promise.all([
-          fetch(`${baseUrl}/api/hr/users`),
-          fetch(`${baseUrl}/api/hr/attendance`),
-          fetch(`${baseUrl}/api/leaves`),
+        const [usersRes, attendanceData, leaveData] = await Promise.all([
+          fetch(`${baseUrl}/api/hr/users`).then(res => res.json()).then(json => json.data || []),
+          fetchAllPaginatedData(`${baseUrl}/api/hr/attendance`),
+          fetchAllPaginatedData(`${baseUrl}/api/leaves`),
         ]);
-
-        const usersJson = await usersRes.json();
-        const attendanceJson = await attendanceRes.json();
-        const leaveJson = await leaveRes.json();
-
-        const usersData = Array.isArray(usersJson)
-          ? usersJson
-          : usersJson.data || [];
-
-        const attendanceData = Array.isArray(attendanceJson)
-          ? attendanceJson
-          : attendanceJson.data || [];
-
-        const leaveData = Array.isArray(leaveJson)
-          ? leaveJson
-          : leaveJson.data || [];
 
         const today = new Date().toISOString().split("T")[0];
 
         const userMap = new Map<string, User>();
 
-        usersData.forEach((user: any) => {
+        usersRes.forEach((user: any) => {
           userMap.set(user.userId, {
             userId: user.userId,
             username: user.username,
@@ -74,43 +84,54 @@ export default function EmployeesPage() {
         });
 
         attendanceData.forEach((record: any) => {
-          const user = userMap.get(record.userId);
-          if (user) {
-            user.attendanceCount++;
-            if (
-              record.date === today &&
-              record.firstHalfPresent &&
-              record.secondHalfPresent
-            ) {
-              user.status = "present";
-            }
-            if (
-              user.lastSeen === "-" ||
-              new Date(record.date) > new Date(user.lastSeen)
-            ) {
-              user.lastSeen = record.date;
+          const recordDate = new Date(record.date);
+          if (recordDate >= start && recordDate <= end) {
+            const user = userMap.get(record.userId);
+            if (user) {
+              if (record.firstHalfPresent && record.secondHalfPresent) {
+                user.attendanceCount += 1;
+              } else if (record.firstHalfPresent || record.secondHalfPresent) {
+                user.attendanceCount += 0.5;
+              }
+
+              if (
+                record.date === today &&
+                record.firstHalfPresent &&
+                record.secondHalfPresent
+              ) {
+                user.status = "present";
+              }
+
+              if (
+                user.lastSeen === "-" ||
+                new Date(record.date) > new Date(user.lastSeen)
+              ) {
+                user.lastSeen = record.date;
+              }
             }
           }
         });
 
         leaveData.forEach((record: any) => {
-          const user = userMap.get(record.userId);
-          if (user) {
-            user.leaveCount++;
-            if (record.date === today) {
-              user.status = "on-leave";
-            }
-            if (
-              user.lastSeen === "-" ||
-              new Date(record.date) > new Date(user.lastSeen)
-            ) {
-              user.lastSeen = record.date;
+          const recordDate = new Date(record.date);
+          if (recordDate >= start && recordDate <= end) {
+            const user = userMap.get(record.userId);
+            if (user) {
+              user.leaveCount++;
+              if (record.date === today) {
+                user.status = "on-leave";
+              }
+              if (
+                user.lastSeen === "-" ||
+                new Date(record.date) > new Date(user.lastSeen)
+              ) {
+                user.lastSeen = record.date;
+              }
             }
           }
         });
 
         const userList = Array.from(userMap.values());
-        console.log("Final Rendered Users:", userList);
         setUsers(userList);
         setFilteredUsers(userList);
       } catch (error) {
