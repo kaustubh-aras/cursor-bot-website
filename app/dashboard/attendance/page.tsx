@@ -493,8 +493,10 @@ export default function AttendancePage() {
     setPassword("");
   };
 
+  const rootPassword = process.env.NEXT_PUBLIC_API_ROOT_PASS;
+
   const handleDeleteConfirm = async () => {
-    if (password !== "admin786") {
+    if (password !== rootPassword) {
       toast({
         title: "Invalid Password",
         description: "Please enter the correct admin password.",
